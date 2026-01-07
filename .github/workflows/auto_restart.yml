@@ -1,0 +1,23 @@
+name: Auto Restart Workflow
+on:
+  schedule:
+    # This runs at the 59th minute of every 6th hour
+    # (Example: 05:59, 11:59, 17:59, 23:59 UTC)
+    - cron: '59 */6 * * *'
+  
+  # This allows you to start it manually anytime from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  restart-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Execute Your Task
+        run: |
+          echo "Workflow started at 05:59 interval cycle"
+          # Add your scripts or commands below
+          # Example: python main.py OR npm start
+          
