@@ -1,0 +1,5 @@
+      - name: Set RDP Password
+        shell: powershell
+        run: |
+          net user runneradmin "${{ secrets.RDP_PASSWORD }}"
+          
