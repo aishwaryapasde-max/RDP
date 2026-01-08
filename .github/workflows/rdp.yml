@@ -1,5 +1,15 @@
-      - name: Set RDP Password
+      - name: Configure RunnerAdmin Account
         shell: powershell
         run: |
-          net user runneradmin "${{ secrets.RDP_PASSWORD }}"
+          # 1. Set the password (Replace 'YourPass123!' with your actual password)
+          $Password = "YourPass123!"
+          net user runneradmin $Password
+          
+          # 2. Add user to Remote Desktop Users group
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+          
+          # 3. Ensure the account never expires during the session
+          Set-LocalUser -Name "runneradmin" -PasswordNeverExpires $true
+          
+          Write-Host "RunnerAdmin account is ready for RDP login."
           
