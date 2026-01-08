@@ -1,9 +1,8 @@
 name: Tailscale_Unlimited_RDP
 on:
   schedule:
-    # Restarts every 6 hours at the 59th minute
     - cron: '59 */6 * * *'
-  workflow_dispatch: # Allows you to start it manually
+  workflow_dispatch:
 
 jobs:
   RDP_Session:
@@ -12,25 +11,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Tailscale
-        shell: powershell
-        run: |
-          iex ((New-Object System.Net.WebClient).DownloadString('https://tailscale.com/install.ps1'))
-
+      # Official Tailscale Action (Replaces the broken download script)
       - name: Connect to Tailscale
-        shell: powershell
-        run: |
-          # Connects using your Secret Key
-          tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
       - name: Setup RunnerAdmin Account
         shell: powershell
         run: |
-          # Sets Password to: Admin@1234
           $Password = "Admin@1234"
           net user runneradmin $Password
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
-          echo "Account Configured Successfully!"
+          Write-Host "Account Configured: runneradmin / Admin@1234"
 
       - name: Enable Remote Desktop
         shell: powershell
@@ -43,15 +36,11 @@ jobs:
         shell: powershell
         run: |
           $start = Get-Date
-          Write-Host "--- RDP READY TO CONNECT ---"
-          Write-Host "Username: runneradmin"
-          Write-Host "Password: Admin@1234"
-          Write-Host "Get IP from: https://login.tailscale.com/admin/machines"
+          Write-Host "--- RDP READY ---"
+          Write-Host "1. Get IP from Tailscale Dashboard"
+          Write-Host "2. User: runneradmin | Pass: Admin@1234"
           
-          # Keeps the session running for 350 minutes (5 hours 50 mins)
           while ((Get-Date) -lt $start.AddMinutes(350)) {
-            $Remaining = 350 - [math]::Floor(((Get-Date) - $start).TotalMinutes)
-            Write-Host "Session active. Time remaining: $Remaining minutes"
             Start-Sleep -Seconds 60
           }
           
