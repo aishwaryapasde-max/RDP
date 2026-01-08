@@ -1,45 +1,53 @@
-name: Tailscale_Windows_11_Style
+name: Windows_11_RDP
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Manual start
 
 jobs:
   RDP_Session:
-    runs-on: windows-latest # This uses the newest available Windows Server
+    runs-on: windows-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install and Connect Tailscale
         shell: powershell
         run: |
+          # Download and Install Tailscale
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --advertise-tags=tag:github --unattended --accept-routes --reset
+          
+          # Simple Connection (No Tags)
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes --reset
 
-      - name: Setup RunnerAdmin & UI
+      - name: Configure Windows 11 Desktop Style
         shell: powershell
         run: |
-          # Set Password
+          # 1. Setup User
           net user runneradmin "Admin@1234"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
           
-          # Remove Test Mode Watermark (Requires Restart usually, but hides for session)
-          bcdedit /set testsigning off
+          # 2. Enable Desktop Experience features
+          Install-WindowsFeature Server-Media-Foundation
           
-          # Enable Dark Mode & Desktop Experience
+          # 3. Set Dark Mode (Windows 11 default feel)
           Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0
+          
+          # 4. Remove 'Test Mode' watermark from the corner
+          bcdedit /set testsigning off
 
       - name: Enable RDP
         shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
-      - name: Keep Alive (6 Hours)
+      - name: Start RDP Session (6 Hours)
         shell: powershell
         run: |
-          Write-Host "--- RDP READY ---"
-          Write-Host "Connect with: runneradmin / Admin@1234"
+          Write-Host "--- WINDOWS 11 STYLE RDP READY ---"
+          Write-Host "User: runneradmin"
+          Write-Host "Pass: Admin@1234"
           $start = Get-Date
           while ((Get-Date) -lt $start.AddMinutes(350)) { Start-Sleep -Seconds 60 }
           
