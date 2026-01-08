@@ -1,12 +1,54 @@
+name: Tailscale_Unlimited_RDP
+on:
+  schedule:
+    - cron: '59 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  RDP_Session:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          # Download
+          # 1. Download official Windows installer
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
           
-          # Install
+          # 2. Install silently
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
           
-          # Connect with additional flags to bypass the 'tags' error
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes --accept-dns=false --unattended
+          # 3. Connect to Tailscale (Fixed Command)
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --unattended --accept-routes --accept-dns=false
+
+      - name: Setup RunnerAdmin User
+        shell: powershell
+        run: |
+          $Password = "Admin@1234"
+          net user runneradmin $Password
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+          Write-Host "Account set: runneradmin / Admin@1234"
+
+      - name: Enable Remote Desktop
+        shell: powershell
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+      - name: Keep Alive (6 Hours)
+        shell: powershell
+        run: |
+          $start = Get-Date
+          Write-Host "--- RDP READY TO CONNECT ---"
+          Write-Host "1. Get IP from Tailscale Dashboard"
+          Write-Host "2. User: runneradmin | Pass: Admin@1234"
+          
+          # Keeps machine running for 5 hours 50 minutes
+          while ((Get-Date) -lt $start.AddMinutes(350)) {
+            Write-Host "RDP Active... $(Get-Date)"
+            Start-Sleep -Seconds 60
+          }
           
