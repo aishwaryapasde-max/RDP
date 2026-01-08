@@ -1,15 +1,13 @@
-      - name: Configure RunnerAdmin Account
+      - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          # 1. Set the password (Replace 'YourPass123!' with your actual password)
-          $Password = "YourPass123!"
-          net user runneradmin $Password
+          # Download
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
           
-          # 2. Add user to Remote Desktop Users group
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+          # Install
+          Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
           
-          # 3. Ensure the account never expires during the session
-          Set-LocalUser -Name "runneradmin" -PasswordNeverExpires $true
-          
-          Write-Host "RunnerAdmin account is ready for RDP login."
+          # Connect using OAuth Secret
+          # We add --hostname so it shows up clearly in your dashboard
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname="GitHub-RDP-Runner" --reset
           
