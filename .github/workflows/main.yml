@@ -1,44 +1,12 @@
-name: Tailscale_Unlimited_RDP
-on:
-  schedule:
-    - cron: '59 */6 * * *'
-  workflow_dispatch:
-
-jobs:
-  RDP_Session:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          # Download the official Windows installer
+          # Download
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
           
-          # Install silently
+          # Install
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
           
-          # Run Tailscale login (using your Secret)
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      - name: Setup User
-        shell: powershell
-        run: |
-          net user runneradmin "Admin@1234"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
-
-      - name: Enable RDP
-        shell: powershell
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-      - name: Keep Alive
-        shell: powershell
-        run: |
-          Write-Host "RDP IS READY!"
-          $start = Get-Date
-          while ((Get-Date) -lt $start.AddMinutes(350)) { Start-Sleep -Seconds 60 }
+          # Connect with additional flags to bypass the 'tags' error
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes --accept-dns=false --unattended
           
