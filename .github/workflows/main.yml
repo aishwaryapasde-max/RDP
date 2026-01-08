@@ -1,66 +1,38 @@
-name: RDP
-
+name: Tailscale RDP
 on:
+  schedule:
+    - cron: '59 */5 * * *' # Restarts every 6 hours (just before the limit)
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  build:
     runs-on: windows-latest
-    # Note: GitHub will still kill this at 360 minutes (6 hours)
-    timeout-minutes: 9999 
-
     steps:
-      - name: Configure Core RDP Settings
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User
-        run: |
-          $password = "CloudPC@2026!" # Fixed password so you don't have to check logs every time
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install Tailscale
+        shell: powershell
         run: |
-          $tsUrl = "pkgs.tailscale.com"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          iex ((New-Object System.Net.WebClient).DownloadString('https://tailscale.com/install.ps1'))
 
-      - name: Establish Tailscale Connection
+      - name: Connect to Tailscale
+        shell: powershell
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-rdp-phone
-          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Maintain Connection
+      - name: Enable RDP
+        shell: powershell
         run: |
-          Write-Host "=== RDP ACCESS DETAILS ==="
-          Write-Host "IP Address: $env:TAILSCALE_IP"
-          Write-Host "Username: RDP"
-          Write-Host "Password: $env:RDP_PASSWORD"
-          Write-Host "=========================="
-          
-          # This loop runs for 5.5 hours, then finishes to allow the Auto-Restart step to trigger
-          $startTime = Get-Date
-          while ((Get-Date) -lt $startTime.AddMinutes(330)) {
-              Write-Host "[$(Get-Date)] RDP Session Active..."
-              Start-Sleep -Seconds 60
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          LocalGroup /add "Remote Desktop Users" "runneradmin"
+
+      - name: Keep Alive (6 Hours)
+        shell: powershell
+        run: |
+          $start = Get-Date
+          while ((Get-Date) -lt $start.AddHours(6)) {
+            Write-Host "RDP is active... Time: $(Get-Date)"
+            Start-Sleep -Seconds 60
           }
-
-      - name: Auto-Restart Workflow
-        if: always()
-        run: |
-          curl -X POST `
-            -H "Authorization: token ${{ secrets.MY_PAT_TOKEN }}" `
-            -H "Accept: application/vnd.github.v3+json" `
-            api.github.com{{ github.repository }}/actions/workflows/RDP.yml/dispatches `
-            -d '{"ref":"main"}'
