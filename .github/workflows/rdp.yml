@@ -1,13 +1,45 @@
+name: Tailscale_Windows_11_Style
+on:
+  workflow_dispatch:
+
+jobs:
+  RDP_Session:
+    runs-on: windows-latest # This uses the newest available Windows Server
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          # Download
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
-          
-          # Install
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --advertise-tags=tag:github --unattended --accept-routes --reset
+
+      - name: Setup RunnerAdmin & UI
+        shell: powershell
+        run: |
+          # Set Password
+          net user runneradmin "Admin@1234"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
           
-          # Connect using OAuth Secret
-          # We add --hostname so it shows up clearly in your dashboard
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname="GitHub-RDP-Runner" --reset
+          # Remove Test Mode Watermark (Requires Restart usually, but hides for session)
+          bcdedit /set testsigning off
+          
+          # Enable Dark Mode & Desktop Experience
+          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0
+
+      - name: Enable RDP
+        shell: powershell
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Keep Alive (6 Hours)
+        shell: powershell
+        run: |
+          Write-Host "--- RDP READY ---"
+          Write-Host "Connect with: runneradmin / Admin@1234"
+          $start = Get-Date
+          while ((Get-Date) -lt $start.AddMinutes(350)) { Start-Sleep -Seconds 60 }
           
