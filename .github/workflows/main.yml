@@ -11,36 +11,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Official Tailscale Action (Replaces the broken download script)
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      - name: Setup RunnerAdmin Account
+      - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          $Password = "Admin@1234"
-          net user runneradmin $Password
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
-          Write-Host "Account Configured: runneradmin / Admin@1234"
+          # Download the official Windows installer
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
+          
+          # Install silently
+          Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
+          
+          # Run Tailscale login (using your Secret)
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Enable Remote Desktop
+      - name: Setup User
+        shell: powershell
+        run: |
+          net user runneradmin "Admin@1234"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
+
+      - name: Enable RDP
         shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
-      - name: Keep Alive (6 Hours)
+      - name: Keep Alive
         shell: powershell
         run: |
+          Write-Host "RDP IS READY!"
           $start = Get-Date
-          Write-Host "--- RDP READY ---"
-          Write-Host "1. Get IP from Tailscale Dashboard"
-          Write-Host "2. User: runneradmin | Pass: Admin@1234"
-          
-          while ((Get-Date) -lt $start.AddMinutes(350)) {
-            Start-Sleep -Seconds 60
-          }
+          while ((Get-Date) -lt $start.AddMinutes(350)) { Start-Sleep -Seconds 60 }
           
