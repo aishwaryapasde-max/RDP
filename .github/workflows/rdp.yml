@@ -1,53 +1,55 @@
-name: Windows_11_RDP
+name: RDP
+
 on:
-  workflow_dispatch: # Manual start
+  workflow_dispatch:
 
 jobs:
-  RDP_Session:
+  rdp-job:
     runs-on: windows-latest
+    timeout-minutes: 360
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install and Connect Tailscale
-        shell: powershell
-        run: |
-          # Download and Install Tailscale
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "ts.exe"
-          Start-Process -FilePath "ts.exe" -ArgumentList "/quiet" -Wait
-          
-          # Simple Connection (No Tags)
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --accept-routes --reset
-
-      - name: Configure Windows 11 Desktop Style
-        shell: powershell
-        run: |
-          # 1. Setup User
-          net user runneradmin "Admin@1234"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "runneradmin"
-          
-          # 2. Enable Desktop Experience features
-          Install-WindowsFeature Server-Media-Foundation
-          
-          # 3. Set Dark Mode (Windows 11 default feel)
-          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0
-          
-          # 4. Remove 'Test Mode' watermark from the corner
-          bcdedit /set testsigning off
-
       - name: Enable RDP
-        shell: powershell
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+          Restart-Service -Name TermService -Force
 
-      - name: Start RDP Session (6 Hours)
-        shell: powershell
+      - name: Create RDP User
         run: |
-          Write-Host "--- WINDOWS 11 STYLE RDP READY ---"
-          Write-Host "User: runneradmin"
-          Write-Host "Pass: Admin@1234"
-          $start = Get-Date
-          while ((Get-Date) -lt $start.AddMinutes(350)) { Start-Sleep -Seconds 60 }
-          
+          $password = -join ((33..126) | Get-Random -Count 16 | % {[char]$_})
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          echo "RDP_USER=RDP" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
+      - name: Install Tailscale
+        run: |
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+          $out = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          Start-Process msiexec.exe -ArgumentList "/i $out /quiet /norestart" -Wait
+
+      - name: Connect Tailscale
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TS_IP=$ip" >> $env:GITHUB_ENV
+
+      - name: Show Connection Info
+        run: |
+          Write-Host "`n============================"
+          Write-Host "âœ… RDP Connected Successfully"
+          Write-Host "IP Address (Tailscale): $env:TS_IP"
+          Write-Host "Username: $env:RDP_USER"
+          Write-Host "Password: $env:RDP_PASS"
+          Write-Host "============================`n"
+
+      - name: Keep Alive
+        run: |
+          while ($true) {
+            Write-Host "[$(Get-Date)] RDP Running..."
+            Start-Sleep -Seconds 300
+          }
