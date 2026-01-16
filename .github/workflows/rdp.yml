@@ -1,55 +1,47 @@
-name: RDP
+name: Ubuntu Tailscale RDP
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to manually trigger the workflow
 
 jobs:
-  rdp-job:
-    runs-on: windows-latest
-    timeout-minutes: 360
-
+  debug-rdp:
+    runs-on: ubuntu-latest
     steps:
-      - name: Enable RDP
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Restart-Service -Name TermService -Force
+      # 1. Checkout Code (Optional, but good practice)
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Create RDP User
+      # 2. Install Desktop Environment (XFCE) and XRDP
+      - name: Install Desktop & XRDP
         run: |
-          $password = -join ((33..126) | Get-Random -Count 16 | % {[char]$_})
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          echo "RDP_USER=RDP" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp
+          sudo apt-get install -y firefox # Optional: Install a browser
+          
+          # Configure XRDP to use XFCE
+          echo xfce4-session > ~/.xsession
+          sudo service xrdp start
 
-      - name: Install Tailscale
+      # 3. Set Password for the 'runner' user
+      # CHANGE "mypassword123" to something secure!
+      - name: Set User Password
         run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-          $out = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process msiexec.exe -ArgumentList "/i $out /quiet /norestart" -Wait
+          echo "runner:mypassword123" | sudo chpasswd
 
-      - name: Connect Tailscale
-        run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
-          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TS_IP=$ip" >> $env:GITHUB_ENV
+      # 4. Connect to Tailscale
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          version: latest
 
-      - name: Show Connection Info
+      # 5. Display IP and Keep Alive
+      - name: Show IP and Keep Alive
         run: |
-          Write-Host "`n============================"
-          Write-Host "âœ… RDP Connected Successfully"
-          Write-Host "IP Address (Tailscale): $env:TS_IP"
-          Write-Host "Username: $env:RDP_USER"
-          Write-Host "Password: $env:RDP_PASS"
-          Write-Host "============================`n"
-
-      - name: Keep Alive
-        run: |
-          while ($true) {
-            Write-Host "[$(Get-Date)] RDP Running..."
-            Start-Sleep -Seconds 300
-          }
+          echo "✅ Tailscale is up!"
+          echo "🔌 Connect via RDP to this IP:"
+          tailscale ip -4
+          
+          echo "⏳ Keeping session alive for 6 hours..."
+          sleep 21600 # Keeps the runner active for 6 hours
+          
