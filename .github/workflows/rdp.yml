@@ -7,7 +7,7 @@ jobs:
   debug-rdp:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout Code (Optional, but good practice)
+      # 1. Checkout Code
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -16,24 +16,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xfce4 xfce4-goodies xrdp
-          sudo apt-get install -y firefox # Optional: Install a browser
+          sudo apt-get install -y firefox
           
           # Configure XRDP to use XFCE
           echo xfce4-session > ~/.xsession
           sudo service xrdp start
 
       # 3. Set Password for the 'runner' user
-      # CHANGE "mypassword123" to something secure!
+      # IMPORTANT: Change "mypassword123" below to a password you will remember!
       - name: Set User Password
         run: |
           echo "runner:mypassword123" | sudo chpasswd
 
-      # 4. Connect to Tailscale
+      # 4. Connect to Tailscale (FIXED VERSION)
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          version: latest
+          version: 1.76.6  # Fixed: Pinned version to prevent download errors
 
       # 5. Display IP and Keep Alive
       - name: Show IP and Keep Alive
@@ -43,5 +43,5 @@ jobs:
           tailscale ip -4
           
           echo "⏳ Keeping session alive for 6 hours..."
-          sleep 21600 # Keeps the runner active for 6 hours
+          sleep 21600 
           
