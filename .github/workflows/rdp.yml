@@ -1,7 +1,7 @@
 name: Ubuntu Tailscale RDP
 
 on:
-  workflow_dispatch: # Allows you to manually trigger the workflow
+  workflow_dispatch:
 
 jobs:
   debug-rdp:
@@ -11,37 +11,60 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Install Desktop Environment (XFCE) and XRDP
-      - name: Install Desktop & XRDP
+      # 2. RAM BOOST (Add 8GB Swap Memory)
+      - name: Add 8GB Swap Space
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+          free -h # Show the new memory size in logs
+
+      # 3. Install Desktop, Browser, and Office
+      - name: Install Desktop & Apps
         run: |
           sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
-          sudo apt-get install -y firefox
+          # Install XFCE (Desktop), Firefox, and LibreOffice
+          sudo apt-get install -y xfce4 xfce4-goodies xrdp firefox libreoffice
           
-          # Configure XRDP to use XFCE
+          # Create Documents folder for Auto-Save
+          mkdir -p /home/runner/Documents
+          
+          # Configure XRDP
           echo xfce4-session > ~/.xsession
           sudo service xrdp start
 
-      # 3. Set Password for the 'runner' user
-      # IMPORTANT: Change "mypassword123" below to a password you will remember!
+      # 4. Set Password (CHANGE "mypassword123" BELOW!)
       - name: Set User Password
         run: |
           echo "runner:mypassword123" | sudo chpasswd
 
-      # 4. Connect to Tailscale (FIXED VERSION)
+      # 5. Connect to Tailscale (Fixed Version)
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          version: 1.76.6  # Fixed: Pinned version to prevent download errors
+          version: 1.76.6
 
-      # 5. Display IP and Keep Alive
+      # 6. Display IP and Keep Alive
       - name: Show IP and Keep Alive
+        timeout-minutes: 360  # Stops automatically after 6 hours
         run: |
           echo "✅ Tailscale is up!"
+          echo "🚀 RAM Boost Active: 15GB Total Memory"
           echo "🔌 Connect via RDP to this IP:"
           tailscale ip -4
           
-          echo "⏳ Keeping session alive for 6 hours..."
+          echo "📂 IMPORTANT: Save your files in 'Documents' to keep them!"
+          echo "⏳ Session active for 6 hours..."
           sleep 21600 
+
+      # 7. SAVE WORK (Runs when time is up or you cancel)
+      - name: Save Documents Folder
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: My-Saved-Work
+          path: /home/runner/Documents
           
